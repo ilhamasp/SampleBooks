@@ -1,119 +1,138 @@
-using System.Linq;
+using ContosoBooks.Models;
 using Microsoft.AspNet.Mvc;
 using Microsoft.AspNet.Mvc.Rendering;
 using Microsoft.Data.Entity;
-using ContosoBooks.Models;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace ContosoBooks.Controllers
 {
     public class AuthorsController : Controller
     {
-        private ApplicationDbContext _context;
+        [FromServices]
+        public AuthorContext AuthorContext { get; set; }
 
-        public AuthorsController(ApplicationDbContext context)
-        {
-            _context = context;    
-        }
+        [FromServices]
+        public ILogger<BooksController> Logger { get; set; }
 
         // GET: Authors
         public IActionResult Index()
         {
-            return View(_context.Author.ToList());
+            var authors = AuthorContext.Authors;
+            return View(authors);
         }
 
-        // GET: Authors/Details/5
-        public IActionResult Details(int? id)
+        // GET: Authors Details
+        public async Task<ActionResult> Details(int id)
         {
-            if (id == null)
-            {
-                return HttpNotFound();
-            }
-
-            Author author = _context.Author.Single(m => m.AuthorID == id);
+            Author author = await AuthorContext.Authors
+                .SingleOrDefaultAsync(b => b.AuthorID == id);
             if (author == null)
             {
+                Logger.LogInformation("Details: Item not found {0}", id);
                 return HttpNotFound();
             }
-
             return View(author);
         }
 
-        // GET: Authors/Create
+        // GET: Authors Create
         public IActionResult Create()
         {
             return View();
         }
 
-        // POST: Authors/Create
+        // POST: Authors Create
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult Create(Author author)
+        public async Task<ActionResult> Create([Bind("FirstMidName", "LastName", "Books")] Author author)
         {
-            if (ModelState.IsValid)
+            try
             {
-                _context.Author.Add(author);
-                _context.SaveChanges();
-                return RedirectToAction("Index");
+                if (ModelState.IsValid)
+                {
+                    AuthorContext.Authors.Add(author);
+                    await AuthorContext.SaveChangesAsync();
+                    return RedirectToAction("Index");
+                }
+            }
+            catch (DataStoreException)
+            {
+                ModelState.AddModelError(string.Empty, "Unable to save changes.");
             }
             return View(author);
         }
 
-        // GET: Authors/Edit/5
-        public IActionResult Edit(int? id)
+        // GET: Authors Edit
+        public async Task<ActionResult> Edit(int id)
         {
-            if (id == null)
-            {
-                return HttpNotFound();
-            }
-
-            Author author = _context.Author.Single(m => m.AuthorID == id);
+            Author author = await FindAuthorAsync(id);
             if (author == null)
             {
+                Logger.LogInformation("Edit: Item not found {0}", id);
                 return HttpNotFound();
             }
+
             return View(author);
         }
 
-        // POST: Authors/Edit/5
+        // POST: Authors Edit
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult Edit(Author author)
+        public async Task<ActionResult> Edit(int id, [Bind("FirstMidName", "LastName", "Books")] Author author)
         {
-            if (ModelState.IsValid)
+            try
             {
-                _context.Update(author);
-                _context.SaveChanges();
+                author.AuthorID = id;
+                AuthorContext.Authors.Attach(author);
+                AuthorContext.Entry(author).State = EntityState.Modified;
+                await AuthorContext.SaveChangesAsync();
                 return RedirectToAction("Index");
+            }
+            catch (DataStoreException)
+            {
+                ModelState.AddModelError(string.Empty, "Unable to save changes.");
             }
             return View(author);
         }
 
-        // GET: Authors/Delete/5
+        private Task<Author> FindAuthorAsync(int id)
+        {
+            return AuthorContext.Authors.SingleOrDefaultAsync(author => author.AuthorID == id);
+        }
+
+        // GET: Authors Delete
+        [HttpGet]
         [ActionName("Delete")]
-        public IActionResult Delete(int? id)
+        public async Task<ActionResult> ConfirmDelete(int id, bool? retry)
         {
-            if (id == null)
-            {
-                return HttpNotFound();
-            }
-
-            Author author = _context.Author.Single(m => m.AuthorID == id);
+            Author author = await FindAuthorAsync(id);
             if (author == null)
             {
+                Logger.LogInformation("Delete: Item not found {0}", id);
                 return HttpNotFound();
             }
-
+            ViewBag.Retry = retry ?? false;
             return View(author);
         }
 
         // POST: Authors/Delete/5
-        [HttpPost, ActionName("Delete")]
+        [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult DeleteConfirmed(int id)
+        public async Task<ActionResult> Delete(int id)
         {
-            Author author = _context.Author.Single(m => m.AuthorID == id);
-            _context.Author.Remove(author);
-            _context.SaveChanges();
+            try
+            {
+                Author author = await FindAuthorAsync(id);
+                AuthorContext.Authors.Remove(author);
+                await AuthorContext.SaveChangesAsync();
+            }
+            catch (DataStoreException)
+            {
+                return RedirectToAction("Delete", new { id = id, retry = true });
+            }
             return RedirectToAction("Index");
         }
     }

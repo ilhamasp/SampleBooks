@@ -47,7 +47,7 @@ namespace ContosoBooks
 
             services.AddEntityFramework()
                 .AddSqlServer()
-                .AddDbContext<ApplicationDbContext>(options =>
+                .AddDbContext<AuthorContext>(options =>
                     options.UseSqlServer(Configuration["Data:DefaultConnection:ConnectionString"]));
 
             services.AddIdentity<ApplicationUser, IdentityRole>()

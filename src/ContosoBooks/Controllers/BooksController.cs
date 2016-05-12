@@ -1,124 +1,156 @@
-using System.Linq;
+using ContosoBooks.Models;
 using Microsoft.AspNet.Mvc;
 using Microsoft.AspNet.Mvc.Rendering;
 using Microsoft.Data.Entity;
-using ContosoBooks.Models;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace ContosoBooks.Controllers
 {
     public class BooksController : Controller
     {
-        private ApplicationDbContext _context;
+        [FromServices]
+        public AuthorContext BookContext { get; set; }
 
-        public BooksController(ApplicationDbContext context)
-        {
-            _context = context;    
-        }
+        [FromServices]
+        public ILogger<BooksController> Logger { get; set; }
 
         // GET: Books
         public IActionResult Index()
         {
-            var applicationDbContext = _context.Book.Include(b => b.Author);
-            return View(applicationDbContext.ToList());
+            var books = BookContext.Books.Include(b => b.Author);
+            return View(books);
         }
 
-        // GET: Books/Details/5
-        public IActionResult Details(int? id)
+        // GET: Books Details
+        public async Task<ActionResult> Details(int id)
         {
-            if (id == null)
-            {
-                return HttpNotFound();
-            }
-
-            Book book = _context.Book.Single(m => m.BookID == id);
+            Book book = await BookContext.Books
+                .Include(b => b.Author)
+                .SingleOrDefaultAsync(b => b.BookID == id);
             if (book == null)
             {
+                Logger.LogInformation("Details: Item not found {0}", id);
                 return HttpNotFound();
             }
-
             return View(book);
         }
 
-        // GET: Books/Create
-        public IActionResult Create()
+        // GET: Books Create
+        public ActionResult Create()
         {
-            ViewData["AuthorID"] = new SelectList(_context.Set<Author>(), "AuthorID", "Author");
+            ViewBag.Items = GetAuthorsListItems();
             return View();
         }
 
-        // POST: Books/Create
+        private IEnumerable<SelectListItem> GetAuthorsListItems(int selected = -1)
+        {
+            var tmp = BookContext.Authors.ToList();  // Workaround for https://github.com/aspnet/EntityFramework/issues/2246
+
+            // Create authors list for <select> dropdown
+            return tmp
+                .OrderBy(author => author.LastName)
+                .Select(author => new SelectListItem
+                {
+                    Text = String.Format("{0}, {1}", author.LastName, author.FirstMidName),
+                    Value = author.AuthorID.ToString(),
+                    Selected = author.AuthorID == selected
+                });
+        }
+
+        // POST: Books Create
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult Create(Book book)
+        public async Task<ActionResult> Create([Bind("Title", "Year", "Price", "Genre", "AuthorID")] Book book)
         {
-            if (ModelState.IsValid)
+            try
             {
-                _context.Book.Add(book);
-                _context.SaveChanges();
-                return RedirectToAction("Index");
+                if (ModelState.IsValid)
+                {
+                    BookContext.Books.Add(book);
+                    await BookContext.SaveChangesAsync();
+                    return RedirectToAction("Index");
+                }
             }
-            ViewData["AuthorID"] = new SelectList(_context.Set<Author>(), "AuthorID", "Author", book.AuthorID);
+            catch (DataStoreException)
+            {
+                ModelState.AddModelError(string.Empty, "Unable to save changes.");
+            }
             return View(book);
         }
 
-        // GET: Books/Edit/5
-        public IActionResult Edit(int? id)
+        // GET: Books Edit
+        public async Task<ActionResult> Edit(int id)
         {
-            if (id == null)
-            {
-                return HttpNotFound();
-            }
-
-            Book book = _context.Book.Single(m => m.BookID == id);
+            Book book = await FindBookAsync(id);
             if (book == null)
             {
+                Logger.LogInformation("Edit: Item not found {0}", id);
                 return HttpNotFound();
             }
-            ViewData["AuthorID"] = new SelectList(_context.Set<Author>(), "AuthorID", "Author", book.AuthorID);
+
+            ViewBag.Items = GetAuthorsListItems(book.AuthorID);
             return View(book);
         }
 
-        // POST: Books/Edit/5
+        // POST: Books Edit
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult Edit(Book book)
+        public async Task<ActionResult> Edit(int id, [Bind("Title", "Year", "Price", "Genre", "AuthorID")] Book book)
         {
-            if (ModelState.IsValid)
+            try
             {
-                _context.Update(book);
-                _context.SaveChanges();
+                book.BookID = id;
+                BookContext.Books.Attach(book);
+                BookContext.Entry(book).State = EntityState.Modified;
+                await BookContext.SaveChangesAsync();
                 return RedirectToAction("Index");
             }
-            ViewData["AuthorID"] = new SelectList(_context.Set<Author>(), "AuthorID", "Author", book.AuthorID);
+            catch (DataStoreException)
+            {
+                ModelState.AddModelError(string.Empty, "Unable to save changes.");
+            }
             return View(book);
         }
 
-        // GET: Books/Delete/5
+        private Task<Book> FindBookAsync(int id)
+        {
+            return BookContext.Books.SingleOrDefaultAsync(book => book.BookID == id);
+        }
+
+        // GET: Books Delete
+        [HttpGet]
         [ActionName("Delete")]
-        public IActionResult Delete(int? id)
+        public async Task<ActionResult> ConfirmDelete(int id, bool? retry)
         {
-            if (id == null)
-            {
-                return HttpNotFound();
-            }
-
-            Book book = _context.Book.Single(m => m.BookID == id);
+            Book book = await FindBookAsync(id);
             if (book == null)
             {
+                Logger.LogInformation("Delete: Item not found {0}", id);
                 return HttpNotFound();
             }
-
+            ViewBag.Retry = retry ?? false;
             return View(book);
         }
 
-        // POST: Books/Delete/5
-        [HttpPost, ActionName("Delete")]
+        // POST: Books Delete
+        [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult DeleteConfirmed(int id)
+        public async Task<ActionResult> Delete(int id)
         {
-            Book book = _context.Book.Single(m => m.BookID == id);
-            _context.Book.Remove(book);
-            _context.SaveChanges();
+            try
+            {
+                Book book = await FindBookAsync(id);
+                BookContext.Books.Remove(book);
+                await BookContext.SaveChangesAsync();
+            }
+            catch (DataStoreException)
+            {
+                return RedirectToAction("Delete", new { id = id, retry = true });
+            }
             return RedirectToAction("Index");
         }
     }

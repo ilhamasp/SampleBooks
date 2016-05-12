@@ -9,18 +9,19 @@ namespace ContosoBooks.Models
     {
         public static void Initialize(IServiceProvider serviceProvider)
         {
-            var context = serviceProvider.GetService<ApplicationDbContext>();
+            var context = serviceProvider.GetService<AuthorContext>();
             context.Database.Migrate();
-            if (!context.Book.Any())
+
+            if (!context.Books.Any())
             {
-                var austen = context.Author.Add(
+                var austen = context.Authors.Add(
                     new Author { LastName = "Austen", FirstMidName = "Jane" }).Entity;
-                var dickens = context.Author.Add(
+                var dickens = context.Authors.Add(
                     new Author { LastName = "Dickens", FirstMidName = "Charles" }).Entity;
-                var cervantes = context.Author.Add(
+                var cervantes = context.Authors.Add(
                     new Author { LastName = "Cervantes", FirstMidName = "Miguel" }).Entity;
 
-                context.Book.AddRange(
+                context.Books.AddRange(
                     new Book()
                     {
                         Title = "Pride and Prejudice",

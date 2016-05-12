@@ -6,7 +6,7 @@
 
 <h2>Edit</h2>
 
-<form asp-action="Edit">
+<form asp-controller="Author" asp-action="Update" method="post" asp-route-id="@Model.AuthorID">
     <div class="form-horizontal">
         <h4>Author</h4>
         <hr />
